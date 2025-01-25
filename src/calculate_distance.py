@@ -5,6 +5,9 @@ import math
 
 
 def calculate_distance(x1, y1, x2, y2, is_prime, is_tenth):
+    """
+    Calculates the distance between two points.
+    """
     if not is_tenth:
         return np.sqrt((x1 - x2) ** 2 + (y1 - y2) ** 2)
     elif is_prime and is_tenth:
