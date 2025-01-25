@@ -53,7 +53,7 @@ def get_clusters_centroids(df: pd.DataFrame) -> pd.DataFrame:
 
 if __name__ == "__main__":
 
-    cities_df = set_cities_df("../data/cities.csv")
+    cities_df = set_cities_df("data/cities.csv")
     print(cities_df.head())
 
     groups = split_into_clusters_kmeans(cities_df, 350)
