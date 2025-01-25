@@ -37,6 +37,20 @@ def split_into_clusters_kmeans(df: pd.DataFrame, n_clusters: int) -> list:
     return groups
 
 
+def get_clusters_centroids(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Returns the centroids of the clusters.
+
+    Parameters:
+    - df (pd.DataFrame): DataFrame with city data.
+
+    Returns:
+    - centroids (pd.DataFrame): DataFrame with the centroids of the clusters.
+    """
+    centroids = df.groupby("Cluster")[["X", "Y"]].mean()
+    return centroids
+
+
 if __name__ == "__main__":
 
     cities_df = set_cities_df("../data/cities.csv")
@@ -51,3 +65,7 @@ if __name__ == "__main__":
     for i in range(10):
         print(f"Grupa {i} - liczba rekordów: {len(groups[i])}")
         print(groups[i].head(), "\n")
+
+    centroids = get_clusters_centroids(cities_df)
+    print(centroids.head())
+    print(len(centroids))
