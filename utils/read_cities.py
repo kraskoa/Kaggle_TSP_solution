@@ -6,72 +6,48 @@ from sympy import isprime
 
 def set_cities_df(filepath: str) -> pd.DataFrame:
     """
-    Wczytuje plik CSV z danymi miast i zwraca DataFrame.
+    Reads a CSV file with city data and returns a DataFrame.
 
-    Parametry:
-    - filepath (str): Ścieżka do pliku CSV.
+    Parameters:
+    - filepath (str): Path to the CSV file.
 
-    Zwraca:
-    - df (pd.DataFrame): DataFrame z danymi miast.
+    Returns:
+    - df (pd.DataFrame): DataFrame with city data.
     """
     df = pd.read_csv(filepath, index_col="CityId")
     df["IsPrime"] = df.index.map(isprime)
     return df
 
 
-def podziel_na_grupy_kmeans(plik_csv, rekordy_na_czesc=200):
+def split_into_clusters_kmeans(df: pd.DataFrame, n_clusters: int) -> list:
     """
-    Dzieli duży plik CSV na mniejsze grupy zawierające określoną liczbę rekordów,
-    przy użyciu algorytmu K-Means do grupowania punktów blisko siebie.
+    Splits cities into groups using the K-Means algorithm.
 
-    Parametry:
-    - plik_csv (str): Ścieżka do pliku CSV zawierającego kolumny 'CityId', 'X', 'Y'.
-    - rekordy_na_czesc (int): Liczba rekordów w każdej grupie.
+    Parameters:
+    - df (pd.DataFrame): DataFrame with city data.
+    - n_clusters (int): Number of clusters.
 
-    Zwraca:
-    - list_of_groups (list of pd.DataFrame): Lista DataFrame'ów, każdy zawierający grupę punktów.
+    Returns:
+    - groups (list): List containing DataFrames with cities in each group.
     """
-    # Wczytaj dane z pliku CSV
-    df = pd.read_csv(plik_csv, index_col="CityId")
-
-    # Oblicz liczbę części
-    liczba_czesci = math.ceil(len(df) / rekordy_na_czesc)
-
-    # Inicjalizuj algorytm K-Means
-    kmeans = KMeans(n_clusters=liczba_czesci, random_state=42)
-
-    # Dopasuj model do danych
-    df["cluster"] = kmeans.fit_predict(df[["X", "Y"]])
-
-    # Grupuj dane według klastra
-    grupy = df.groupby("cluster")
-
-    # Zbiór do przechowywania grup DataFrame
-    list_of_groups = []
-
-    # Iteruj przez grupy i dodawaj je do listy
-    for cluster_id, grupa in grupy:
-        if not grupa.empty:
-            # Usuń kolumnę pomocniczą
-            grupa_clean = grupa.drop(["cluster"], axis=1)
-            list_of_groups.append(grupa_clean)
-
-    return list_of_groups
+    X = df[["X", "Y"]].values
+    kmeans = KMeans(n_clusters=n_clusters, random_state=42)
+    df["Cluster"] = kmeans.fit_predict(X)
+    groups = [group for _, group in df.groupby("Cluster")]
+    return groups
 
 
-# Przykładowe użycie
 if __name__ == "__main__":
-    # plik_csv = "../data/cities.csv"
-    # rekordy_na_czesc = 200
-
-    # grupy_kmeans = podziel_na_grupy_kmeans(plik_csv, rekordy_na_czesc)
-
-    # # Wyświetlenie informacji o pierwszych kilku grupach
-    # for idx, grupa in enumerate(grupy_kmeans[:5], start=1):
-    #     print(f"Grupa K-Means {idx} - liczba rekordów: {len(grupa)}")
-    #     print(grupa.head(), "\n")
-
-    # print(f"Łączna liczba grup (K-Means): {len(grupy_kmeans)}")
 
     cities_df = set_cities_df("../data/cities.csv")
     print(cities_df.head())
+
+    groups = split_into_clusters_kmeans(cities_df, 350)
+    print(groups[0].head())
+    print(groups[1].head())
+    print(groups[2].head())
+    print(groups[3].head())
+
+    for i in range(10):
+        print(f"Grupa {i} - liczba rekordów: {len(groups[i])}")
+        print(groups[i].head(), "\n")
