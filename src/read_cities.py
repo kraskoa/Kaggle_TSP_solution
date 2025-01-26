@@ -47,7 +47,10 @@ def get_clusters_centroids(df: pd.DataFrame) -> pd.DataFrame:
     Returns:
     - centroids (pd.DataFrame): DataFrame with the centroids of the clusters.
     """
+    north_pole_cluster_number = df.loc[0, "Cluster"]
     centroids = df.groupby("Cluster")[["X", "Y"]].mean()
+    centroids["IsNorthPole"] = 0
+    centroids.loc[north_pole_cluster_number, "IsNorthPole"] = 1
     return centroids
 
 
@@ -69,7 +72,9 @@ if __name__ == "__main__":
         max_length_of_group = max(max_length_of_group, len(groups[i]))
 
     print(max_length_of_group)
+    print(cities_df.head())
 
     centroids = get_clusters_centroids(cities_df)
-    print(centroids.head())
+    print(centroids.head(78))
+    # print(centroids.loc[77])
     print(len(centroids))

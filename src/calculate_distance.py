@@ -32,6 +32,18 @@ def calculate_path_score(path, cities_df):
     return score
 
 
+def calculate_centroids_path(centroids_path, centroids_df):
+    score = 0
+    for i in range(1, len(centroids_path)):
+        centroid1 = centroids_df.loc[centroids_path[i - 1]]
+        centroid2 = centroids_df.loc[centroids_path[i]]
+        score += np.sqrt(
+            (centroid1["X"] - centroid2["X"]) ** 2
+            + (centroid1["Y"] - centroid2["Y"]) ** 2
+        )
+    return score
+
+
 if __name__ == "__main__":
     cities_df = read_cities.set_cities_df("../data/cities.csv")
     dumbest_path = cities_df.index.values[1:]
