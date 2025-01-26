@@ -1,86 +1,114 @@
+import pandas as pd
 import numpy as np
+from deap import base, creator, tools, algorithms
 import random
-from scipy.spatial.distance import cdist
-from utils.read_cities import (
-    set_cities_df,
-    split_into_clusters_kmeans,
-    get_clusters_centroids,
-)
+from read_cities import set_cities_df, split_into_clusters_kmeans
 
 
-def aco(cities, n_ants, n_iterations, alpha, beta, rho):
-    coordinates = np.array([[c["X"], c["Y"]] for c in cities])
-    distance_matrix = cdist(coordinates, coordinates)
+def calculate_distance_matrix(cities):
+    """
+    Calculate a distance matrix from a DataFrame of cities.
+    """
+    num_cities = len(cities)
+    distance_matrix = np.zeros((num_cities, num_cities))
 
-    pheromones = np.ones((n_cities, n_cities))
-
-    n_cities = len(cities)
-    best_path = None
-    best_cost = float("inf")
-
-    def calculate_cost(path):
-        total_cost = 0
-        speed = 1.0
-        for i in range(len(path) - 1):
-            total_cost += distance_matrix[path[i], path[i + 1]] / speed
-            if (i + 1) % 10 == 0 and not cities[path[i + 1]]["isPrime"]:
-                speed *= 0.9
-        return total_cost
-
-    for _ in range(n_iterations):
-        all_paths = []
-        all_costs = []
-
-        for _ in range(n_ants):
-            visited = set()
-            path = [random.randint(0, n_cities - 1)]
-            visited.add(path[0])
-
-            while len(path) < n_cities:
-                current = path[-1]
-                probabilities = []
-                for j in range(n_cities):
-                    if j not in visited:
-                        pheromone = pheromones[current, j] ** alpha
-                        heuristic = (1 / distance_matrix[current, j]) ** beta
-                        probabilities.append(pheromone * heuristic)
-                    else:
-                        probabilities.append(0)
-                probabilities = np.array(probabilities)
-                probabilities /= probabilities.sum()
-                next_city = np.random.choice(range(n_cities), p=probabilities)
-                path.append(next_city)
-                visited.add(next_city)
-
-            path.append(path[0])
-            cost = calculate_cost(path)
-            all_paths.append(path)
-            all_costs.append(cost)
-
-        for i in range(len(all_costs)):
-            if all_costs[i] < best_cost:
-                best_cost = all_costs[i]
-                best_path = all_paths[i]
-
-        pheromones *= 1 - rho
-        for i, path in enumerate(all_paths):
-            for j in range(len(path) - 1):
-                pheromones[path[j], path[j + 1]] += 1 / all_costs[i]
-
-    return best_path, best_cost
+    for i in range(num_cities):
+        for j in range(num_cities):
+            if i != j:
+                distance_matrix[i, j] = np.sqrt(
+                    (cities.loc[i, "X"] - cities.loc[j, "X"]) ** 2
+                    + (cities.loc[i, "Y"] - cities.loc[j, "Y"]) ** 2
+                )
+    return distance_matrix
 
 
+def aco_find_hamilton_path(
+    cities, n_ants=20, n_generations=100, evaporation_rate=0.5, alpha=1, beta=2
+):
+    original_indices = cities.index.tolist()
+    cities = cities.reset_index(drop=True)
+
+    distance_matrix = calculate_distance_matrix(cities)
+
+    num_cities = len(cities)
+    pheromone_matrix = np.ones((num_cities, num_cities))
+
+    # DEAP setup
+    creator.create(
+        "FitnessMin", base.Fitness, weights=(-1.0,)
+    )  # Minimize total distance
+    creator.create("Individual", list, fitness=creator.FitnessMin)
+
+    toolbox = base.Toolbox()
+    toolbox.register("indices", random.sample, range(num_cities), num_cities)
+    toolbox.register(
+        "individual", tools.initIterate, creator.Individual, toolbox.indices
+    )
+    toolbox.register("population", tools.initRepeat, list, toolbox.individual)
+
+    def fitness_function(individual):
+        total_distance = 0
+        for i in range(len(individual) - 1):
+            a, b = individual[i], individual[i + 1]
+            total_distance += distance_matrix[a, b]
+        return (total_distance,)
+
+    def pheromone_update(population, evaporation_rate=0.5):
+        nonlocal pheromone_matrix
+        pheromone_matrix *= 1 - evaporation_rate  # Evaporate existing pheromones
+        for individual in population:
+            for i in range(len(individual) - 1):
+                a, b = individual[i], individual[i + 1]
+                pheromone_matrix[a, b] += 1 / fitness_function(individual)[0]
+
+    def biased_selection(individual):
+        path = [individual[0]]
+        while len(path) < num_cities:
+            current_city = path[-1]
+            unvisited = [city for city in range(num_cities) if city not in path]
+            probabilities = [
+                (pheromone_matrix[current_city, city] ** alpha)
+                * ((1 / distance_matrix[current_city, city]) ** beta)
+                for city in unvisited
+            ]
+            probabilities /= np.sum(probabilities)
+            next_city = random.choices(unvisited, weights=probabilities, k=1)[0]
+            path.append(next_city)
+        return path
+
+    toolbox.register("evaluate", fitness_function)
+    toolbox.register("mate", tools.cxPartialyMatched)
+    toolbox.register("mutate", tools.mutShuffleIndexes, indpb=0.2)
+    toolbox.register("select", tools.selTournament, tournsize=3)
+    toolbox.register("select_biased", biased_selection)
+
+    population = toolbox.population(n=n_ants)
+    halloffame = tools.HallOfFame(1)  # Store the best solution
+    stats = tools.Statistics(lambda ind: ind.fitness.values)
+    stats.register("avg", np.mean)
+    stats.register("min", np.min)
+    stats.register("max", np.max)
+
+    for gen in range(n_generations):
+        offspring = algorithms.varAnd(population, toolbox, cxpb=0.5, mutpb=0.2)
+        for ind in offspring:
+            ind[:] = toolbox.select_biased(ind)
+            ind.fitness.values = toolbox.evaluate(ind)
+        population[:] = toolbox.select(offspring, k=len(population))
+        pheromone_update(population)
+        halloffame.update(population)
+
+    best_solution = halloffame[0]
+    hamiltonian_path = [original_indices[node] for node in best_solution]
+
+    return hamiltonian_path
+
+
+# Example usage
 if __name__ == "__main__":
-    n_ants = 20
-    n_iterations = 100
-    alpha = 1  # wpływ feromonów
-    beta = 2  # wpływ heurystyki (1 / odległość)
-    rho = 0.5  # współczynnik parowania feromonów
-
     all_cities = set_cities_df("data/cities.csv")
     groups = split_into_clusters_kmeans(all_cities, 600)
-    cities = groups[0]
+    cities_df = groups[0]
 
-    best_path, best_cost = aco(cities, n_ants, n_iterations, alpha, beta, rho)
-    print("Najlepsza ścieżka:", best_path)
-    print("Koszt:", best_cost)
+    path = aco_find_hamilton_path(cities_df)
+    print("Hamiltonian Path:", path)
