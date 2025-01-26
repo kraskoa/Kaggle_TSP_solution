@@ -4,41 +4,47 @@ from read_cities import (
     split_into_clusters_kmeans,
     get_clusters_centroids,
 )
+
 import numpy as np
 import pandas as pd
 import random
 import math
 import matplotlib.pyplot as plt
-from deap import base
-from deap import creator
-from deap import tools
-from deap import algorithms
+from deap import base, creator, tools, algorithms
 
+# Tworzymy problem minimalizacji (chcemy jak najkrótszą trasę)
 creator.create("FitnessMin", base.Fitness, weights=(-1.0,))
 creator.create("Individual", list, fitness=creator.FitnessMin)
 
 toolbox = base.Toolbox()
-toolbox.register("indices", random.sample, range(1, 197770), 600)
+NUM_CITIES = 600
+toolbox.register("indices", lambda: random.sample(range(NUM_CITIES), NUM_CITIES))
 toolbox.register("individual", tools.initIterate, creator.Individual, toolbox.indices)
 toolbox.register("population", tools.initRepeat, list, toolbox.individual)
-toolbox.register("mate", tools.cxOrdered)
+
+# Lepszy crossover i mutacja
+toolbox.register("mate", tools.cxPartialyMatched)
 toolbox.register("mutate", tools.mutShuffleIndexes, indpb=0.05)
+
+# Selekcja
 toolbox.register("select", tools.selTournament, tournsize=3)
-toolbox.register(
-    "evaluate", calculate_path_score, cities_df=set_cities_df("../data/cities.csv")
-)
+
+# Inicjalizacja miast
+cities_df = set_cities_df("../data/cities.csv")
+
+
+# Funkcja oceny
+def evaluate(individual):
+    return (calculate_path_score(individual, cities_df),)
+
+
+toolbox.register("evaluate", evaluate)
 
 
 def main():
-    cities_df = set_cities_df("../data/cities.csv")
-    groups = split_into_clusters_kmeans(cities_df, 600)
-    centroids = get_clusters_centroids(cities_df)
-    centroids = centroids.to_numpy()
-    centroids = centroids.tolist()
-
-    # Inicjalizacja populacji
+    # Tworzymy populację
     pop = toolbox.population(n=300)
-    hof = tools.HallOfFame(1)
+    hof = tools.HallOfFame(1)  # Najlepsze rozwiązanie
     stats = tools.Statistics(lambda ind: ind.fitness.values)
     stats.register("avg", np.mean)
     stats.register("std", np.std)
@@ -46,12 +52,12 @@ def main():
     stats.register("max", np.max)
 
     # Algorytm ewolucyjny
-    algorithms.eaSimple(
+    pop, log = algorithms.eaSimple(
         pop,
         toolbox,
         cxpb=0.7,
         mutpb=0.2,
-        ngen=40,
+        ngen=100,
         stats=stats,
         halloffame=hof,
         verbose=True,
@@ -66,5 +72,5 @@ if __name__ == "__main__":
     # Wyświetlanie wyników
     best_ind = hof[0]
     print(
-        "Best individual is: %s\nwith fitness: %s" % (best_ind, best_ind.fitness.values)
+        f"Najlepsza trasa: {best_ind}\nDługość trasy: {best_ind.fitness.values[0]:.2f}"
     )
