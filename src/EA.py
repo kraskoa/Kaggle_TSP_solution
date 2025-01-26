@@ -11,6 +11,9 @@ from read_cities import (
 import numpy as np
 import random
 from deap import base, creator, tools, algorithms
+import multiprocessing
+import matplotlib.pyplot as plt
+import time
 
 # Inicjalizacja miast
 cities_df = set_cities_df("../data/cities.csv")
@@ -113,6 +116,10 @@ toolbox.register("evaluate", evaluate)
 
 
 def main():
+    # Inicjalizacja pool dla multiprocessing
+    pool = multiprocessing.Pool()
+    toolbox.register("map", pool.map)  # Ustawienie mapowania na wielowątkowe
+
     pop = toolbox.population(n=300)
     hof = tools.HallOfFame(1)
     stats = tools.Statistics(lambda ind: ind.fitness.values)
@@ -121,32 +128,75 @@ def main():
     stats.register("min", np.min)
     stats.register("max", np.max)
 
-    # Sprawdzenie populacji przed startem algorytmu
-    for ind in pop:
-        assert (
-            len(ind) == NUM_CENTROIDS + 1
-        ), f"Błąd: osobnik ma {len(ind)} miast, oczekiwano {NUM_CENTROIDS + 1}"
-        assert (
-            ind[0] == CENTROID_INDEX and ind[-1] == CENTROID_INDEX
-        ), f"Błąd: trasa nie zaczyna/kończy się na {CENTROID_INDEX}"
-
     pop, log = algorithms.eaSimple(
         pop,
         toolbox,
         cxpb=0.7,
         mutpb=0.2,
-        ngen=1000,
+        ngen=10000,
         stats=stats,
         halloffame=hof,
         verbose=True,
     )
 
-    return pop, stats, hof
+    pool.close()  # Zamknij pool po zakończeniu
+    pool.join()  # Poczekaj na zakończenie wszystkich procesów
+
+    return pop, stats, hof, log
 
 
 if __name__ == "__main__":
-    pop, stats, hof = main()
+    start_time = time.time()
+    pop, stats, hof, log = main()
+    print(f"Czas wykonania: {time.time() - start_time:.2f} s")
     best_ind = hof[0]
     best_fitness = best_ind.fitness.values[0]  # Uzyskaj wartość fitness przed konwersją
     best_ind = [int(x) for x in best_ind]  # Konwersja elementów na typ int
     print(f"Najlepsza trasa: {best_ind}\nDługość trasy: {best_fitness:.2f}")
+
+    # Sprawdź, czy plik istnieje i odczytaj wartość fitness
+    try:
+        with open("best_route.txt", "r") as f:
+            lines = f.readlines()
+            saved_fitness = float(lines[1].split(": ")[1])
+    except (FileNotFoundError, IndexError, ValueError):
+        saved_fitness = float(
+            "inf"
+        )  # Jeśli plik nie istnieje lub jest niepoprawny, załóż, że obecna wartość fitness jest lepsza
+
+    # Zapisz najlepszą trasę do pliku, jeśli jest lepsza od zapisanej
+    if best_fitness < saved_fitness:
+        with open("best_route.txt", "w") as f:
+            f.write(f"Najlepsza trasa: {best_ind}\nDługość trasy: {best_fitness:.2f}")
+
+    # Zbieranie danych z logów
+    gen = log.select("gen")
+    min_ = log.select("min")
+    avg = log.select("avg")
+    max_ = log.select("max")
+
+    # Tworzenie subplotów
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8))
+
+    # Rysowanie wykresu średnich wartości funkcji oceny
+    ax1.plot(gen, avg, "g--", label="Średnia")
+    ax1.set_xlabel("Generacja")
+    ax1.set_ylabel("Średnia wartość funkcji oceny")
+    ax1.set_title("Średnia wartość funkcji oceny w każdej generacji")
+    ax1.legend(loc="best")
+    ax1.grid(True)
+
+    # Rysowanie wykresu minimalnych wartości funkcji oceny
+    ax2.plot(gen, min_, "ro-", label="Minimalna", markersize=6)
+    ax2.set_xlabel("Generacja")
+    ax2.set_ylabel("Minimalna wartość funkcji oceny")
+    ax2.set_title("Minimalna wartość funkcji oceny w każdej generacji")
+    ax2.legend(loc="best")
+    ax2.grid(True)
+
+    # Zapisz wykresy do plików
+    fig.tight_layout()
+    fig.savefig("fitness_plots.png")
+
+    # Wyświetlanie wykresów
+    plt.show()

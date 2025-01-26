@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import read_cities
 import math
+from numba import jit, njit
 
 
 def calculate_distance(x1, y1, x2, y2, is_prime, is_tenth):
@@ -32,16 +33,38 @@ def calculate_path_score(path, cities_df):
     return score
 
 
+# def calculate_centroids_path(centroids_path, centroids_df):
+#     score = 0
+#     for i in range(1, len(centroids_path)):
+#         centroid1 = centroids_df.loc[centroids_path[i - 1]]
+#         centroid2 = centroids_df.loc[centroids_path[i]]
+#         score += np.sqrt(
+#             (centroid1["X"] - centroid2["X"]) ** 2
+#             + (centroid1["Y"] - centroid2["Y"]) ** 2
+#         )
+#     return score
+
+
 def calculate_centroids_path(centroids_path, centroids_df):
-    score = 0
-    for i in range(1, len(centroids_path)):
-        centroid1 = centroids_df.loc[centroids_path[i - 1]]
-        centroid2 = centroids_df.loc[centroids_path[i]]
-        score += np.sqrt(
-            (centroid1["X"] - centroid2["X"]) ** 2
-            + (centroid1["Y"] - centroid2["Y"]) ** 2
-        )
-    return score
+    coords = centroids_df.loc[centroids_path][["X", "Y"]].values
+    diffs = np.diff(coords, axis=0)
+    return np.sum(np.linalg.norm(diffs, axis=1))
+
+
+# @njit
+# def calculate_centroids_path_numba(coords):
+#     diffs = np.zeros((coords.shape[0] - 1, coords.shape[1]))
+#     for i in range(1, coords.shape[0]):
+#         diffs[i - 1] = coords[i] - coords[i - 1]
+#     norms = np.zeros(diffs.shape[0])
+#     for i in range(diffs.shape[0]):
+#         norms[i] = np.sqrt(np.sum(diffs[i] ** 2))
+#     return np.sum(norms)
+
+
+# def calculate_centroids_path(centroids_path, centroids_df):
+#     coords = centroids_df.loc[centroids_path][["X", "Y"]].values
+#     return calculate_centroids_path_numba(coords)
 
 
 if __name__ == "__main__":
