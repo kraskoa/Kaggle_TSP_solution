@@ -2,6 +2,10 @@ import pandas as pd
 import numpy as np
 from deap import base, creator, tools, algorithms
 import random
+import time
+import multiprocessing
+import matplotlib.pyplot as plt
+from functools import partial
 from read_cities import set_cities_df, split_into_clusters_kmeans
 
 
@@ -22,8 +26,43 @@ def calculate_distance_matrix(cities):
     return distance_matrix
 
 
+def fitness_function(individual, distance_matrix):
+    total_distance = 0
+    for i in range(len(individual) - 1):
+        a, b = individual[i], individual[i + 1]
+        total_distance += distance_matrix[a, b]
+    return (total_distance,)
+
+
+def pheromone_update(population, pheromone_matrix, evaporation_rate):
+    pheromone_matrix *= 1 - evaporation_rate
+    for ind in population:
+        total_distance = ind.fitness.values[0]  # reuse stored fitness
+        for i in range(len(ind) - 1):
+            a, b = ind[i], ind[i + 1]
+            pheromone_matrix[a, b] += 1 / total_distance
+
+
+def biased_selection(individual, pheromone_matrix, distance_matrix, alpha, beta):
+    num_cities = len(individual)
+    path = [individual[0]]
+    while len(path) < num_cities:
+        current_city = path[-1]
+        unvisited = [city for city in range(num_cities) if city not in path]
+        probabilities = [
+            (pheromone_matrix[current_city, city] ** alpha)
+            * ((1 / distance_matrix[current_city, city]) ** beta)
+            for city in unvisited
+        ]
+        probabilities = np.array(probabilities)
+        probabilities /= np.sum(probabilities)
+        next_city = random.choices(unvisited, weights=probabilities, k=1)[0]
+        path.append(next_city)
+    return path
+
+
 def aco_find_hamilton_path(
-    cities, n_ants=20, n_generations=100, evaporation_rate=0.5, alpha=1, beta=2
+    cities, n_ants, n_generations, evaporation_rate, alpha, beta
 ):
     original_indices = cities.index.tolist()
     cities = cities.reset_index(drop=True)
@@ -46,41 +85,30 @@ def aco_find_hamilton_path(
     )
     toolbox.register("population", tools.initRepeat, list, toolbox.individual)
 
-    def fitness_function(individual):
-        total_distance = 0
-        for i in range(len(individual) - 1):
-            a, b = individual[i], individual[i + 1]
-            total_distance += distance_matrix[a, b]
-        return (total_distance,)
+    toolbox.register(
+        "evaluate", partial(fitness_function, distance_matrix=distance_matrix)
+    )
+    toolbox.register(
+        "pheromone_update",
+        partial(
+            pheromone_update,
+            pheromone_matrix=pheromone_matrix,
+            evaporation_rate=evaporation_rate,
+        ),
+    )
+    toolbox.register(
+        "select_biased",
+        partial(
+            biased_selection, distance_matrix=distance_matrix, alpha=alpha, beta=beta
+        ),
+    )
 
-    def pheromone_update(population, evaporation_rate=0.5):
-        nonlocal pheromone_matrix
-        pheromone_matrix *= 1 - evaporation_rate  # Evaporate existing pheromones
-        for individual in population:
-            for i in range(len(individual) - 1):
-                a, b = individual[i], individual[i + 1]
-                pheromone_matrix[a, b] += 1 / fitness_function(individual)[0]
-
-    def biased_selection(individual):
-        path = [individual[0]]
-        while len(path) < num_cities:
-            current_city = path[-1]
-            unvisited = [city for city in range(num_cities) if city not in path]
-            probabilities = [
-                (pheromone_matrix[current_city, city] ** alpha)
-                * ((1 / distance_matrix[current_city, city]) ** beta)
-                for city in unvisited
-            ]
-            probabilities /= np.sum(probabilities)
-            next_city = random.choices(unvisited, weights=probabilities, k=1)[0]
-            path.append(next_city)
-        return path
-
-    toolbox.register("evaluate", fitness_function)
     toolbox.register("mate", tools.cxPartialyMatched)
     toolbox.register("mutate", tools.mutShuffleIndexes, indpb=0.2)
     toolbox.register("select", tools.selTournament, tournsize=3)
-    toolbox.register("select_biased", biased_selection)
+
+    pool = multiprocessing.Pool()
+    toolbox.register("map", pool.map)
 
     population = toolbox.population(n=n_ants)
     halloffame = tools.HallOfFame(1)  # Store the best solution
@@ -89,26 +117,51 @@ def aco_find_hamilton_path(
     stats.register("min", np.min)
     stats.register("max", np.max)
 
+    min_distances = []
+
+    population = toolbox.population(n=n_ants)
     for gen in range(n_generations):
         offspring = algorithms.varAnd(population, toolbox, cxpb=0.5, mutpb=0.2)
-        for ind in offspring:
-            ind[:] = toolbox.select_biased(ind)
-            ind.fitness.values = toolbox.evaluate(ind)
+
+        invalid_ind = [ind for ind in offspring if not ind.fitness.valid]
+        fitnesses = toolbox.map(toolbox.evaluate, invalid_ind)
+        for ind, fit in zip(invalid_ind, fitnesses):
+            ind.fitness.values = fit
         population[:] = toolbox.select(offspring, k=len(population))
-        pheromone_update(population)
+        toolbox.pheromone_update(population)
         halloffame.update(population)
+
+        record = stats.compile(population)
+        min_distances.append(record["min"])
 
     best_solution = halloffame[0]
     hamiltonian_path = [original_indices[node] for node in best_solution]
 
-    return hamiltonian_path
+    return hamiltonian_path, stats, min_distances
 
 
-# Example usage
 if __name__ == "__main__":
+    n_ants = 200
+    n_generations = 1000
+    evaporation_rate = 0.5
+    alpha = 1
+    beta = 2
     all_cities = set_cities_df("data/cities.csv")
     groups = split_into_clusters_kmeans(all_cities, 600)
-    cities_df = groups[0]
+    cities_df = groups[10]
 
-    path = aco_find_hamilton_path(cities_df)
+    start = time.time()
+    path, stats, min_distances = aco_find_hamilton_path(
+        cities_df, n_ants, n_generations, evaporation_rate, alpha, beta
+    )
+    end = time.time()
+
     print("Hamiltonian Path:", path)
+    print("Time elapsed:", end - start, "seconds")
+
+    plt.plot(range(n_generations), min_distances, marker="o", linestyle="-", color="b")
+    plt.xlabel("Generation")
+    plt.ylabel("Minimum Distance")
+    plt.title("Evolution of Total Distance Over Generations")
+    plt.grid()
+    plt.show()
