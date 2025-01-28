@@ -6,6 +6,7 @@ from deap import base, tools
 import multiprocessing
 import time
 from functools import partial
+from tqdm import tqdm
 from read_cities import set_cities_df, split_into_clusters_kmeans
 
 
@@ -141,10 +142,10 @@ def run_aco_tsp(
             pheromone[a, b] += deposit_amount
             pheromone[b, a] += deposit_amount
 
-        print(
-            f"Iteration {iteration+1}/{n_iterations}, "
-            f"Best distance so far: {best_distance:.2f}"
-        )
+        # print(
+        #     f"Iteration {iteration+1}/{n_iterations}, "
+        #     f"Best distance so far: {best_distance:.2f}"
+        # )
 
     pool.close()
     pool.join()
@@ -168,25 +169,43 @@ def run_aco_tsp(
 
 if __name__ == "__main__":
     cities_df = set_cities_df("data/cities.csv")
-    df_example = split_into_clusters_kmeans(cities_df, 600)[77]
+    df_example = split_into_clusters_kmeans(cities_df, 600)
     # print(df_example.head())
     # print(len(df_example))
+    all_routes = {}
     # Run ACO on this DataFrame
-    start = time.time()
-    best_dist, best_route_ids, dist_hist = run_aco_tsp(
-        df_example,
-        n_ants=20,
-        n_iterations=80,
-        alpha=1.5,
-        beta=5.0,
-        evaporation=0.25,
-        pheromone_deposit=1.0,
-        seed=42,
-        plot_progress=True,
-        cluster_id=77,
+    # start = time.time()
+    for cluster_id in tqdm(range(600), desc="Running ACO on Clusters", unit="cluster"):
+        print(f"cluster_id: {cluster_id}")
+        df_cluster = df_example[cluster_id]
+        best_dist, best_route_ids, dist_hist = run_aco_tsp(
+            df_cluster,
+            n_ants=150,
+            n_iterations=50,
+            alpha=1.5,
+            beta=5.0,
+            evaporation=0.25,
+            pheromone_deposit=1.0,
+            seed=42,
+            plot_progress=False,
+            cluster_id=cluster_id,
+        )
+        all_routes[cluster_id] = best_route_ids
+
+    final_routes = {
+        key: [int(value) for value in values] for key, values in all_routes.items()
+    }
+    df_routes = pd.DataFrame(
+        {
+            "clusterID": list(final_routes.keys()),
+            "ordered_indices": final_routes.values(),
+        }
     )
-    end = time.time()
-    print("\nFinal Results:")
-    print("Best Distance Found:", best_dist)
-    print("Best Route (City IDs):", list(map(int, best_route_ids)))
-    print("Time elapsed:", end - start, "seconds")
+    print("Finished ACO on all clusters!")
+    print(df_routes.head())
+    df_routes.to_csv("data/best_routes_per_cluster.csv", index=False)
+    # end = time.time()
+    # print("\nFinal Results:")
+    # print("Best Distance Found:", best_dist)
+    # print("Best Route (City IDs):", list(map(int, best_route_ids)))
+    # print("Time elapsed:", end - start, "seconds")
