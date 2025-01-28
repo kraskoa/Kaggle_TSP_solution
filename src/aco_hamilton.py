@@ -13,16 +13,12 @@ def calculate_distance_matrix(cities):
     """
     Calculate a distance matrix from a DataFrame of cities.
     """
-    num_cities = len(cities)
-    distance_matrix = np.zeros((num_cities, num_cities))
+    coords = cities[["X", "Y"]].to_numpy()
 
-    for i in range(num_cities):
-        for j in range(num_cities):
-            if i != j:
-                distance_matrix[i, j] = np.sqrt(
-                    (cities.loc[i, "X"] - cities.loc[j, "X"]) ** 2
-                    + (cities.loc[i, "Y"] - cities.loc[j, "Y"]) ** 2
-                )
+    diff = coords[:, np.newaxis, :] - coords[np.newaxis, :, :]
+
+    distance_matrix = np.sqrt(np.sum(diff**2, axis=-1))
+
     return distance_matrix
 
 
@@ -99,7 +95,11 @@ def aco_find_hamilton_path(
     toolbox.register(
         "select_biased",
         partial(
-            biased_selection, distance_matrix=distance_matrix, alpha=alpha, beta=beta
+            biased_selection,
+            pheromone_matrix=pheromone_matrix,
+            distance_matrix=distance_matrix,
+            alpha=alpha,
+            beta=beta,
         ),
     )
 
@@ -123,6 +123,8 @@ def aco_find_hamilton_path(
     for gen in range(n_generations):
         offspring = algorithms.varAnd(population, toolbox, cxpb=0.5, mutpb=0.2)
 
+        offspring = list(toolbox.map(toolbox.select_biased, offspring))
+
         invalid_ind = [ind for ind in offspring if not ind.fitness.valid]
         fitnesses = toolbox.map(toolbox.evaluate, invalid_ind)
         for ind, fit in zip(invalid_ind, fitnesses):
@@ -131,32 +133,32 @@ def aco_find_hamilton_path(
         toolbox.pheromone_update(population)
         halloffame.update(population)
 
-        record = stats.compile(population)
-        min_distances.append(record["min"])
+        min_distances.append(halloffame[0].fitness.values[0])
 
     best_solution = halloffame[0]
     hamiltonian_path = [original_indices[node] for node in best_solution]
 
-    return hamiltonian_path, stats, min_distances
+    return hamiltonian_path, stats, min_distances, best_solution
 
 
 if __name__ == "__main__":
     n_ants = 200
-    n_generations = 1000
+    n_generations = 100
     evaporation_rate = 0.5
     alpha = 1
-    beta = 2
+    beta = 3
     all_cities = set_cities_df("data/cities.csv")
     groups = split_into_clusters_kmeans(all_cities, 600)
-    cities_df = groups[10]
+    cities_df = groups[77]
 
     start = time.time()
-    path, stats, min_distances = aco_find_hamilton_path(
+    path, stats, min_distances, best_solution = aco_find_hamilton_path(
         cities_df, n_ants, n_generations, evaporation_rate, alpha, beta
     )
     end = time.time()
 
     print("Hamiltonian Path:", path)
+    print("Best Path Length:", best_solution.fitness.values[0])
     print("Time elapsed:", end - start, "seconds")
 
     plt.plot(range(n_generations), min_distances, marker="o", linestyle="-", color="b")

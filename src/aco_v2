@@ -1,0 +1,180 @@
+import numpy as np
+import pandas as pd
+import random
+import matplotlib.pyplot as plt
+from deap import base, tools
+import multiprocessing
+from functools import partial
+from read_cities import set_cities_df, split_into_clusters_kmeans
+
+
+def evaluate_route(route, dist_matrix):
+    """
+    route: list of city indices (0..n_cities-1)
+    dist_matrix: 2D NumPy array of shape (n_cities, n_cities)
+
+    Returns: float
+       Total distance of the route, *closing the loop* back to the first city.
+    """
+    pairwise_dist = dist_matrix[route[:-1], route[1:]].sum()
+    pairwise_dist += dist_matrix[route[-1], route[0]]
+    return pairwise_dist
+
+
+def run_aco_tsp(
+    df,
+    n_ants=30,
+    n_iterations=50,
+    alpha=1.0,
+    beta=5.0,
+    evaporation=0.3,
+    pheromone_deposit=1.0,
+    seed=42,
+    plot_progress=True,
+):
+    """
+    Runs an Ant Colony Optimization (ACO) for a TSP-like problem on a subset of
+    cities contained in a pandas DataFrame.
+
+    Assumptions:
+      - The DataFrame has "X" and "Y" columns for coordinates.
+      - City IDs are in the DataFrame *index* (df.index).
+
+    Returns:
+      - best_distance (float)
+      - best_route_city_ids (list of city IDs from the df index)
+      - distance_history (list of best distances per iteration)
+    """
+    city_ids = df.index.to_numpy()  # city IDs are in the index
+    coords = df[["X", "Y"]].to_numpy()  # shape: (n_cities, 2)
+    n_cities = len(coords)
+
+    random.seed(seed)
+    np.random.seed(seed)
+
+    diff = coords[:, np.newaxis, :] - coords[np.newaxis, :, :]
+    dist_matrix = np.sqrt((diff**2).sum(axis=2))  # shape: (n_cities, n_cities)
+    np.fill_diagonal(dist_matrix, np.inf)
+
+    pheromone = np.ones((n_cities, n_cities), dtype=np.float64)
+    visibility = 1.0 / dist_matrix  # for i==j => 1/inf => 0
+
+    toolbox = base.Toolbox()
+    pool = multiprocessing.Pool()  # use all cores by default
+    toolbox.register("map", pool.map)
+
+    evaluate_func = partial(evaluate_route, dist_matrix=dist_matrix)
+
+    def construct_route():
+        """
+        Build a single ant's route using ACO logic:
+          Probability(next_city) ~ (pheromone^alpha)*(visibility^beta)
+        """
+        route = []
+        start_city = random.randint(0, n_cities - 1)
+        route.append(start_city)
+
+        visited = {start_city}
+        current_city = start_city
+
+        for _ in range(n_cities - 1):
+            pher_row = pheromone[current_city] ** alpha
+            vis_row = visibility[current_city] ** beta
+
+            mask_visited = np.array([i in visited for i in range(n_cities)])
+            pher_row = np.where(mask_visited, 0.0, pher_row)
+            vis_row = np.where(mask_visited, 0.0, vis_row)
+            probs = pher_row * vis_row
+
+            sum_probs = probs.sum()
+            if sum_probs == 0.0:
+                unvisited = list(set(range(n_cities)) - visited)
+                next_city = random.choice(unvisited)
+            else:
+                r = random.random() * sum_probs
+                cum_sum = 0.0
+                next_city = None
+                for i, p in enumerate(probs):
+                    cum_sum += p
+                    if cum_sum >= r:
+                        next_city = i
+                        break
+
+            route.append(next_city)
+            visited.add(next_city)
+            current_city = next_city
+
+        return route
+
+    best_distance = float("inf")
+    best_route_indices = None
+    distance_history = []
+
+    for iteration in range(n_iterations):
+        all_routes = [construct_route() for _ in range(n_ants)]
+
+        distances = list(toolbox.map(evaluate_func, all_routes))
+
+        local_best_dist = min(distances)
+        if local_best_dist < best_distance:
+            best_distance = local_best_dist
+            best_route_indices = all_routes[np.argmin(distances)]
+
+        distance_history.append(best_distance)
+
+        pheromone *= 1 - evaporation
+
+        for route, dist in zip(all_routes, distances):
+            deposit_amount = pheromone_deposit / dist
+            for i in range(len(route) - 1):
+                a, b = route[i], route[i + 1]
+                pheromone[a, b] += deposit_amount
+                pheromone[b, a] += deposit_amount
+            a, b = route[-1], route[0]
+            pheromone[a, b] += deposit_amount
+            pheromone[b, a] += deposit_amount
+
+        print(
+            f"Iteration {iteration+1}/{n_iterations}, "
+            f"Best distance so far: {best_distance:.2f}"
+        )
+
+    pool.close()
+    pool.join()
+
+    best_route_city_ids = [city_ids[i] for i in best_route_indices]
+
+    if plot_progress:
+        plt.figure(figsize=(8, 5))
+        plt.plot(distance_history, label="Best Distance")
+        plt.title("ACO - TSP: Best Distance over Iterations")
+        plt.xlabel("Iteration")
+        plt.ylabel("Distance")
+        plt.legend()
+        plt.grid(True)
+        plt.show()
+
+    return best_distance, best_route_city_ids, distance_history
+
+
+if __name__ == "__main__":
+    cities_df = set_cities_df("data/cities.csv")
+    df_example = split_into_clusters_kmeans(cities_df, 600)[420]
+    # print(df_example.head())
+    # print(len(df_example))
+    # Run ACO on this DataFrame
+    best_dist, best_route_ids, dist_hist = run_aco_tsp(
+        df_example,
+        n_ants=250,
+        n_iterations=100,
+        alpha=1.0,
+        beta=4.0,
+        evaporation=0.4,
+        pheromone_deposit=1.0,
+        seed=42,
+        plot_progress=True,
+    )
+
+    print("\nFinal Results:")
+    print("Best Distance Found:", best_dist)
+    print("Best Route (City IDs):", list(map(int, best_route_ids)))

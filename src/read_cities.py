@@ -15,7 +15,6 @@ def set_cities_df(filepath: str) -> pd.DataFrame:
     - df (pd.DataFrame): DataFrame with city data.
     """
     df = pd.read_csv(filepath, index_col="CityId")
-    df["IsPrime"] = df.index.map(isprime)
     return df
 
 
