@@ -4,6 +4,7 @@ import random
 import matplotlib.pyplot as plt
 from deap import base, tools
 import multiprocessing
+import time
 from functools import partial
 from read_cities import set_cities_df, split_into_clusters_kmeans
 
@@ -31,6 +32,7 @@ def run_aco_tsp(
     pheromone_deposit=1.0,
     seed=42,
     plot_progress=True,
+    cluster_id=None,
 ):
     """
     Runs an Ant Colony Optimization (ACO) for a TSP-like problem on a subset of
@@ -71,7 +73,12 @@ def run_aco_tsp(
           Probability(next_city) ~ (pheromone^alpha)*(visibility^beta)
         """
         route = []
-        start_city = random.randint(0, n_cities - 1)
+        if cluster_id == 77:
+            possible_matches = np.where(city_ids == 0)[0]
+            if len(possible_matches) > 0:
+                start_city = possible_matches[0]
+        else:
+            start_city = random.randint(0, n_cities - 1)
         route.append(start_city)
 
         visited = {start_city}
@@ -147,7 +154,9 @@ def run_aco_tsp(
     if plot_progress:
         plt.figure(figsize=(8, 5))
         plt.plot(distance_history, label="Best Distance")
-        plt.title("ACO - TSP: Best Distance over Iterations")
+        plt.title(
+            f"ants: {n_ants}, iterations: {n_iterations}, best_distance: {best_distance:.2f}"
+        )
         plt.xlabel("Iteration")
         plt.ylabel("Distance")
         plt.legend()
@@ -159,22 +168,25 @@ def run_aco_tsp(
 
 if __name__ == "__main__":
     cities_df = set_cities_df("data/cities.csv")
-    df_example = split_into_clusters_kmeans(cities_df, 600)[420]
+    df_example = split_into_clusters_kmeans(cities_df, 600)[77]
     # print(df_example.head())
     # print(len(df_example))
     # Run ACO on this DataFrame
+    start = time.time()
     best_dist, best_route_ids, dist_hist = run_aco_tsp(
         df_example,
-        n_ants=250,
-        n_iterations=100,
-        alpha=1.0,
-        beta=4.0,
-        evaporation=0.4,
+        n_ants=20,
+        n_iterations=80,
+        alpha=1.5,
+        beta=5.0,
+        evaporation=0.25,
         pheromone_deposit=1.0,
         seed=42,
         plot_progress=True,
+        cluster_id=77,
     )
-
+    end = time.time()
     print("\nFinal Results:")
     print("Best Distance Found:", best_dist)
     print("Best Route (City IDs):", list(map(int, best_route_ids)))
+    print("Time elapsed:", end - start, "seconds")
