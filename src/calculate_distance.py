@@ -29,8 +29,8 @@ def calculate_path_score(path, cities_df):
     return score
 
 
-def calculate_centroids_path(centroids_path, centroids_df):
-    coords = centroids_df.loc[centroids_path][["X", "Y"]].values
+def calculate_local_path(path, points_df):
+    coords = points_df.loc[path][["X", "Y"]].values
     diffs = np.diff(coords, axis=0)
     return np.sum(np.linalg.norm(diffs, axis=1))
 
@@ -43,28 +43,21 @@ if __name__ == "__main__":
     print(dumb_score)
     score = calculate_path_score(path, cities_df)
     print(score)
-    # Output: 0.0
     path = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
     score = calculate_path_score(path, cities_df)
     print(score)
-    # Output: 1.1
     path = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
     score = calculate_path_score(path, cities_df)
     print(score)
-    # Output: 2.2
     path = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]
     score = calculate_path_score(path, cities_df)
     print(score)
-    # Output: 3.3
     path = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
     score = calculate_path_score(path, cities_df)
     print(score)
-    # Output: 4.4
     path = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
     score = calculate_path_score(path, cities_df)
     print(score)
-    # Output: 5.5
     path = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
     score = calculate_path_score(path, cities_df)
     print(score)
-    # Output: 6.6
