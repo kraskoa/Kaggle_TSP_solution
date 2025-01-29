@@ -21,7 +21,7 @@ import itertools
 # KONFIGURACJA ALGORYTMU
 # ----------------------
 POP_SIZE = 600  # Rozmiar populacji
-NGEN = 50  # Liczba generacji
+NGEN = 10000  # Liczba generacji
 CXPB = 0.7  # Prawdopodobieństwo krzyżowania
 MUTPB = 0.2  # Prawdopodobieństwo mutacji
 
@@ -225,9 +225,8 @@ toolbox.register("evaluate", evaluate)
 
 def main():
     # Inicjalizacja pool dla multiprocessing
-    num_cores = multiprocessing.cpu_count()
-    pool = multiprocessing.Pool(processes=num_cores)
-    toolbox.register("map", pool.imap_unordered)
+    pool = multiprocessing.Pool()
+    toolbox.register("map", pool.map)
 
     # Przygotowanie populacji
     pop = toolbox.population(n=POP_SIZE)
