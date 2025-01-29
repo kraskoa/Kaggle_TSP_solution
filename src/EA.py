@@ -14,12 +14,14 @@ from deap import base, creator, tools, algorithms
 import multiprocessing
 import matplotlib.pyplot as plt
 import time
+from functools import partial
+import itertools
 
 # ----------------------
 # KONFIGURACJA ALGORYTMU
 # ----------------------
 POP_SIZE = 600  # Rozmiar populacji
-NGEN = 10000  # Liczba generacji
+NGEN = 50  # Liczba generacji
 CXPB = 0.7  # Prawdopodobieństwo krzyżowania
 MUTPB = 0.2  # Prawdopodobieństwo mutacji
 
@@ -101,24 +103,113 @@ def crossover_with_fixed_start_end(ind1, ind2):
 toolbox.register("mate", crossover_with_fixed_start_end)
 
 
-def mutate_2opt_fixed_ends(individual):
-    """Mutacja 2-Opt z zachowaniem pierwszego i ostatniego miasta."""
+# def swap_mutation_with_fixed_points(individual):
+#     """Losowa zamiana dwóch miast z zachowaniem pierwszego i ostatniego miasta."""
+#     idx1, idx2 = random.sample(range(1, len(individual) - 1), 2)
+#     individual[idx1], individual[idx2] = individual[idx2], individual[idx1]
+#     return (individual,)
+
+
+# toolbox.register("mutate", swap_mutation_with_fixed_points)
+
+
+# def mutate_2opt_fixed_ends(individual):
+#     """Mutacja 2-Opt z zachowaniem pierwszego i ostatniego miasta."""
+#     start, end = individual[0], individual[-1]
+#     temp = individual[1:-1]
+
+#     # Jeśli permutacja jest za krótka, nie ma co optymalizować
+#     if len(temp) < 2:
+#         return (individual,)
+
+#     i, j = sorted(random.sample(range(len(temp)), 2))
+#     # Odwróć podsegment
+#     temp[i:j] = reversed(temp[i:j])
+
+#     individual[:] = [start] + temp + [end]
+#     return (individual,)
+
+
+# toolbox.register("mutate", mutate_2opt_fixed_ends)
+
+
+def mutate_3opt_fixed_ends(individual, centroid_df):
+    """
+    Mutacja 3-Opt z zachowaniem pierwszego i ostatniego miasta,
+    z WYBOREM najlepszej opcji (najkrótsza trasa).
+
+    - Wycinamy trzy krawędzie w "temp" (środkowej części).
+    - Generujemy wszystkie możliwe warianty 3-Opt (odwrócenia segmentów B i C
+      oraz ewentualną zamianę kolejności B <-> C).
+    - Liczymy koszt i wybieramy najlepszy (najmniejszy).
+    """
+
     start, end = individual[0], individual[-1]
     temp = individual[1:-1]
 
-    # Jeśli permutacja jest za krótka, nie ma co optymalizować
-    if len(temp) < 2:
+    # Jeśli permutacja jest za krótka, nic nie zmieniamy
+    if len(temp) < 3:
         return (individual,)
 
-    i, j = sorted(random.sample(range(len(temp)), 2))
-    # Odwróć podsegment
-    temp[i:j] = reversed(temp[i:j])
+    # 1) Losowo wybieramy 3 indeksy w temp
+    i, j, k = sorted(random.sample(range(len(temp)), 3))
 
-    individual[:] = [start] + temp + [end]
+    # 2) Segmenty: A, B, C, D (Uwaga: tu "A" i "D" to "otoczenie" B, C w środku)
+    #    - "A" = temp[:i]
+    #    - "B" = temp[i:j]
+    #    - "C" = temp[j:k]
+    #    - "D" = temp[k:]
+    A = temp[:i]
+    B = temp[i:j]
+    C = temp[j:k]
+    D = temp[k:]
+
+    # Funkcja pomocnicza do odwracania segmentu, jeśli trzeba
+    def rev_if_needed(segment, do_reverse):
+        return list(reversed(segment)) if do_reverse else segment
+
+    # 3) Zbierz wszystkie WARIANTY w zbiór (aby nie duplikować tych samych kombinacji)
+    transformations = set()
+
+    # Rozważamy wszystkie 2x2x2 = 8 kombinacje:
+    # - swap = czy zamieniamy kolejność B, C
+    # - revB = czy odwracamy segment B
+    # - revC = czy odwracamy segment C
+    for swap, revB, revC in itertools.product(
+        [False, True], [False, True], [False, True]
+    ):
+        B_ = rev_if_needed(B, revB)
+        C_ = rev_if_needed(C, revC)
+
+        if not swap:
+            # Kolejność: A-B_-C_-D
+            new_temp = A + B_ + C_ + D
+        else:
+            # Kolejność: A-C_-B_-D
+            new_temp = A + C_ + B_ + D
+
+        transformations.add(tuple(new_temp))  # tuple() aby można było dodać do set()
+
+    # 4) Obliczamy koszt oryginalnej trasy (by móc porównać)
+    orig_path = [start] + temp + [end]
+    best_cost = calculate_local_path(orig_path, centroid_df)
+    best_temp = temp  # domyślnie pozostajemy przy oryginale
+
+    # 5) Testujemy każdy wariant z transformations
+    for t in transformations:
+        candidate = [start] + list(t) + [end]
+        cost_candidate = calculate_local_path(candidate, centroid_df)
+        if cost_candidate < best_cost:
+            best_cost = cost_candidate
+            best_temp = list(t)
+
+    # 6) Zmieniamy "individual" na najlepszą znaną opcję
+    individual[:] = [start] + best_temp + [end]
     return (individual,)
 
 
-toolbox.register("mutate", mutate_2opt_fixed_ends)
+# Rejestracja mutacji 3-Opt z wyborem najlepszej opcji
+toolbox.register("mutate", partial(mutate_3opt_fixed_ends, centroid_df=centroid_df))
 
 # Selekcja
 toolbox.register("select", tools.selTournament, tournsize=3)
@@ -134,8 +225,9 @@ toolbox.register("evaluate", evaluate)
 
 def main():
     # Inicjalizacja pool dla multiprocessing
-    pool = multiprocessing.Pool()
-    toolbox.register("map", pool.map)
+    num_cores = multiprocessing.cpu_count()
+    pool = multiprocessing.Pool(processes=num_cores)
+    toolbox.register("map", pool.imap_unordered)
 
     # Przygotowanie populacji
     pop = toolbox.population(n=POP_SIZE)
