@@ -48,22 +48,22 @@ def run_aco_tsp(
       - best_route_city_ids (list of city IDs from the df index)
       - distance_history (list of best distances per iteration)
     """
-    city_ids = df.index.to_numpy()  # city IDs are in the index
-    coords = df[["X", "Y"]].to_numpy()  # shape: (n_cities, 2)
+    city_ids = df.index.to_numpy()
+    coords = df[["X", "Y"]].to_numpy()
     n_cities = len(coords)
 
     random.seed(seed)
     np.random.seed(seed)
 
     diff = coords[:, np.newaxis, :] - coords[np.newaxis, :, :]
-    dist_matrix = np.sqrt((diff**2).sum(axis=2))  # shape: (n_cities, n_cities)
+    dist_matrix = np.sqrt((diff**2).sum(axis=2))
     np.fill_diagonal(dist_matrix, np.inf)
 
     pheromone = np.ones((n_cities, n_cities), dtype=np.float64)
-    visibility = 1.0 / dist_matrix  # for i==j => 1/inf => 0
+    visibility = 1.0 / dist_matrix
 
     toolbox = base.Toolbox()
-    pool = multiprocessing.Pool()  # use all cores by default
+    pool = multiprocessing.Pool()
     toolbox.register("map", pool.map)
 
     evaluate_func = partial(evaluate_route, dist_matrix=dist_matrix)
