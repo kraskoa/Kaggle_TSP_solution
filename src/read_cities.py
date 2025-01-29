@@ -68,12 +68,16 @@ if __name__ == "__main__":
     # print(groups[3].head())
     max_length_of_group = 0
 
-    # for i in range(399):
-    #     print(f"Grupa {i} - liczba rekordów: {len(groups[i])}")
-    #     print(groups[i].head(), "\n")
-    #     max_length_of_group = max(max_length_of_group, len(groups[i]))
+    for i in range(399):
+        # print(f"Grupa {i} - liczba rekordów: {len(groups[i])}")
+        # print(groups[i].head(), "\n")
+        max_length_of_group = max(max_length_of_group, len(groups[i]))
+        min_length_of_group = min(max_length_of_group, len(groups[i]))
+    avg_length_of_group = sum(len(group) for group in groups) / len(groups)
 
-    print(max_length_of_group)
+    print(f"max length:{max_length_of_group}")
+    print(f"min_length:{min_length_of_group}")
+    print(f"avg_length:{avg_length_of_group}")
     print(cities_df.head())
 
     centroids = get_clusters_centroids(cities_df)
