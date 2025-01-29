@@ -5,9 +5,6 @@ import math
 
 
 def calculate_distance(x1, y1, x2, y2, is_prime, is_tenth):
-    """
-    Calculates the distance between two points.
-    """
     if not is_tenth:
         return np.sqrt((x1 - x2) ** 2 + (y1 - y2) ** 2)
     elif is_prime and is_tenth:
@@ -32,18 +29,6 @@ def calculate_path_score(path, cities_df):
     return score
 
 
-# def calculate_centroids_path(centroids_path, centroids_df):
-#     score = 0
-#     for i in range(1, len(centroids_path)):
-#         centroid1 = centroids_df.loc[centroids_path[i - 1]]
-#         centroid2 = centroids_df.loc[centroids_path[i]]
-#         score += np.sqrt(
-#             (centroid1["X"] - centroid2["X"]) ** 2
-#             + (centroid1["Y"] - centroid2["Y"]) ** 2
-#         )
-#     return score
-
-
 def calculate_local_path(path, points_df):
     coords = points_df.loc[path][["X", "Y"]].values
     diffs = np.diff(coords, axis=0)
@@ -58,28 +43,21 @@ if __name__ == "__main__":
     print(dumb_score)
     score = calculate_path_score(path, cities_df)
     print(score)
-    # Output: 0.0
     path = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
     score = calculate_path_score(path, cities_df)
     print(score)
-    # Output: 1.1
     path = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
     score = calculate_path_score(path, cities_df)
     print(score)
-    # Output: 2.2
     path = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]
     score = calculate_path_score(path, cities_df)
     print(score)
-    # Output: 3.3
     path = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
     score = calculate_path_score(path, cities_df)
     print(score)
-    # Output: 4.4
     path = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
     score = calculate_path_score(path, cities_df)
     print(score)
-    # Output: 5.5
     path = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
     score = calculate_path_score(path, cities_df)
     print(score)
-    # Output: 6.6

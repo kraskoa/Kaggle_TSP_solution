@@ -38,18 +38,15 @@ def main():
         if cluster_id == cluster_ids[-1] and comeback:
             final_city_path.append(0)
         comeback = True
-    # print(final_city_path)
-    # print(len(final_city_path))
-    # print(type(final_city_path))
-    # print(final_city_path[0])
-    # print(type(final_city_path[0]))
-    # print(final_city_path[1])
-    # print(final_city_path[-1])
-    # print(type(final_city_path[-1]))
-    # print(final_city_path[-2])
 
     final_score = calculate_path_score(final_city_path, cities_df)
     print(final_score)
+
+    final_city_path_df = pd.DataFrame(final_city_path, columns=["CityId"])
+    final_city_path_df.to_csv("final_city_path.csv", index=False)
+
+    with open("final_score.txt", "w") as file:
+        file.write(f"Final Score: {final_score}\n")
 
 
 if __name__ == "__main__":
