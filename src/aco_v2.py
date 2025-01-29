@@ -181,7 +181,7 @@ if __name__ == "__main__":
         best_dist, best_route_ids, dist_hist = run_aco_tsp(
             df_cluster,
             n_ants=150,
-            n_iterations=50,
+            n_iterations=80,
             alpha=1.5,
             beta=5.0,
             evaporation=0.25,
