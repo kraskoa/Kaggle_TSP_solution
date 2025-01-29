@@ -55,15 +55,19 @@ if __name__ == "__main__":
     cities_df = set_cities_df("data/cities.csv")
     print(cities_df.head())
 
-    groups = split_into_clusters_kmeans(cities_df, 350)
+    groups = split_into_clusters_kmeans(cities_df, 600)
     print(groups[0].head())
     print(groups[1].head())
     print(groups[2].head())
     print(groups[3].head())
+    max_length_of_group = 0
 
-    for i in range(10):
+    for i in range(399):
         print(f"Grupa {i} - liczba rekordów: {len(groups[i])}")
         print(groups[i].head(), "\n")
+        max_length_of_group = max(max_length_of_group, len(groups[i]))
+
+    print(max_length_of_group)
 
     centroids = get_clusters_centroids(cities_df)
     print(centroids.head())
